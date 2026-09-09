@@ -48,11 +48,13 @@ jobs:
             echo "$out"
             echo "$delimiter"
           } >> "$GITHUB_OUTPUT"
+          fence='```'
+          while [[ "$out" == *"$fence"* ]]; do fence="${fence}\`"; done
           {
             echo '## PR 本文チェック'
-            echo '```'
+            echo "$fence"
             echo "$out"
-            echo '```'
+            echo "$fence"
           } >> "$GITHUB_STEP_SUMMARY"
 
       # fork からの PR は GITHUB_TOKEN が read-only でコメントできないため、
