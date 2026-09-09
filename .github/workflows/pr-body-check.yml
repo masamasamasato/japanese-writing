@@ -45,16 +45,21 @@ jobs:
           RESULT: ${{ steps.check.outputs.result }}
         with:
           script: |
+            const PASS_SCORE = 85;
             const marker = '<!-- pr-body-check -->';
+            const result = process.env.RESULT.trimEnd();
+            const m = result.match(/点数:\s*(\d+)\s*\/\s*100/);
+            const score = m ? parseInt(m[1], 10) : 0;
+            const status = score >= PASS_SCORE ? '✅ pass' : '❌ fail';
             const body = [
               marker,
-              '## PR 本文チェック',
+              `## PR 本文チェック ${status}`,
               '',
               '```',
-              process.env.RESULT.trimEnd(),
+              result,
               '```',
               '',
-              '_`scripts/check.py` による自動チェック。点数は目安で、構成の良し悪しは測れません。_',
+              `_\`scripts/check.py\` による自動チェック。${PASS_SCORE} 点以上で pass。点数は目安で、構成の良し悪しは測れません。_`,
             ].join('\n');
             const { owner, repo } = context.repo;
             const issue_number = context.issue.number;
