@@ -72,13 +72,16 @@ jobs:
             const m = result.match(/点数:\s*(\d+)\s*\/\s*100/);
             const score = m ? parseInt(m[1], 10) : 0;
             const status = score >= PASS_SCORE ? '✅ pass' : '❌ fail';
+            // 出力に ``` が含まれても崩れないよう、最長のバッククォート連続より 1 つ長い fence で囲む。
+            const longest = (result.match(/`+/g) || []).reduce((a, s) => Math.max(a, s.length), 0);
+            const fence = '`'.repeat(Math.max(3, longest + 1));
             const body = [
               marker,
               `## PR 本文チェック ${status}`,
               '',
-              '```',
+              fence,
               result,
-              '```',
+              fence,
               '',
               `_\`scripts/check.py\` による自動チェック。${PASS_SCORE} 点以上で pass。点数は目安で、構成の良し悪しは測れません。_`,
             ].join('\n');
