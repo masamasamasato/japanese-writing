@@ -1,0 +1,109 @@
+name: PR docs check
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: pr-docs-check-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR merge ref
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Restore checker from base
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: git checkout "$BASE_SHA" -- scripts/
+
+      - name: Run check.py on changed Markdown files
+        id: check
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          mapfile -t files < <(git diff --name-only --diff-filter=d "$BASE_SHA" HEAD -- '*.md')
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "changed=0" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "changed=${#files[@]}" >> "$GITHUB_OUTPUT"
+
+          pass=85
+          worst=100
+          report=""
+          for f in "${files[@]}"; do
+            [ -f "$f" ] || continue
+            set +e
+            out="$(python3 scripts/check.py "$f" 2>&1)"
+            rc=$?
+            set -e
+            if [ "$rc" -ne 0 ]; then
+              out="$(printf 'check.py の実行に失敗しました (exit %s):\n%s' "$rc" "$out")"
+              score=0
+            else
+              score="$(printf '%s\n' "$out" | sed -n 's/^点数: \([0-9]\{1,3\}\).*/\1/p' | head -1)"
+              [ -z "$score" ] && score=0
+            fi
+            if [ "$score" -lt "$worst" ]; then worst="$score"; fi
+            if [ "$score" -ge "$pass" ]; then badge="✅"; else badge="❌"; fi
+            fence='```'
+            while printf '%s' "$out" | grep -qF "$fence"; do fence="${fence}"'`'; done
+            report="$(printf '%s\n\n### `%s` — %s %s / 100\n\n%s\n%s\n%s' "$report" "$f" "$badge" "$score" "$fence" "$out" "$fence")"
+          done
+
+          echo "worst=$worst" >> "$GITHUB_OUTPUT"
+          d="EOF_DOCS_$(python3 -c 'import uuid; print(uuid.uuid4().hex)')"
+          {
+            echo "report<<$d"
+            printf '%s\n' "$report"
+            echo "$d"
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo '## 変更ファイルの文章チェック'
+            printf '%s\n' "$report"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # fork からの PR は GITHUB_TOKEN が read-only でコメントできないため、
+      # コメント投稿は同一リポジトリの PR に限る。結果はジョブサマリーで見られる。
+      - name: Upsert PR comment
+        if: steps.check.outputs.changed != '0' && github.event.pull_request.head.repo.fork == false
+        uses: actions/github-script@v7
+        env:
+          REPORT: ${{ steps.check.outputs.report }}
+          WORST: ${{ steps.check.outputs.worst }}
+        with:
+          script: |
+            const PASS_SCORE = 85;
+            const marker = '<!-- pr-docs-check -->';
+            const report = process.env.REPORT.trimEnd();
+            const worst = parseInt(process.env.WORST || '0', 10);
+            const status = worst >= PASS_SCORE ? '✅ pass' : '❌ fail';
+            const body = [
+              marker,
+              `## 変更ファイルの文章チェック ${status}`,
+              report,
+              '',
+              `_変更のあった Markdown を base の \`scripts/check.py\` で採点。${PASS_SCORE} 点以上で pass。点数は目安で、構成の良し悪しは測れません。_`,
+            ].join('\n');
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            // コメント数が 30 を超える PR でも既存の sticky コメントを見つけられるよう全ページ走査する。
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner, repo, issue_number, per_page: 100,
+            });
+            const existing = comments.find((c) => c.body && c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            }
