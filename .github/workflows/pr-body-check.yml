@@ -1,0 +1,99 @@
+name: PR body check
+
+on:
+  pull_request:
+    types: [opened, edited, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: pr-body-check-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout base ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+
+      - name: Run check.py on the PR body
+        id: check
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          printf '%s' "$PR_BODY" > pr-body.md
+          if [ ! -s pr-body.md ]; then
+            echo "empty=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "empty=false" >> "$GITHUB_OUTPUT"
+          # check.py が例外や環境要因で落ちても、ワークフローは fail させず結果として出す。
+          set +e
+          raw="$(python3 scripts/check.py pr-body.md 2>&1)"
+          rc=$?
+          set -e
+          if [ "$rc" -eq 0 ]; then
+            out="$raw"
+          else
+            out="$(printf 'check.py の実行に失敗しました (exit %s):\n%s' "$rc" "$raw")"
+          fi
+          delimiter="EOF_CHECK_RESULT_$(python3 -c 'import uuid; print(uuid.uuid4().hex)')"
+          {
+            echo "result<<$delimiter"
+            echo "$out"
+            echo "$delimiter"
+          } >> "$GITHUB_OUTPUT"
+          fence='```'
+          while [[ "$out" == *"$fence"* ]]; do fence="${fence}\`"; done
+          {
+            echo '## PR 本文チェック'
+            echo "$fence"
+            echo "$out"
+            echo "$fence"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # fork からの PR は GITHUB_TOKEN が read-only でコメントできないため、
+      # コメント投稿は同一リポジトリの PR に限る。結果はジョブサマリーで見られる。
+      - name: Upsert PR comment
+        if: steps.check.outputs.empty == 'false' && github.event.pull_request.head.repo.fork == false
+        uses: actions/github-script@v7
+        env:
+          RESULT: ${{ steps.check.outputs.result }}
+        with:
+          script: |
+            const PASS_SCORE = 85;
+            const marker = '<!-- pr-body-check -->';
+            const result = process.env.RESULT.trimEnd();
+            const m = result.match(/点数:\s*(\d+)\s*\/\s*100/);
+            const score = m ? parseInt(m[1], 10) : 0;
+            const status = score >= PASS_SCORE ? '✅ pass' : '❌ fail';
+            // 出力に ``` が含まれても崩れないよう、最長のバッククォート連続より 1 つ長い fence で囲む。
+            const longest = (result.match(/`+/g) || []).reduce((a, s) => Math.max(a, s.length), 0);
+            const fence = '`'.repeat(Math.max(3, longest + 1));
+            const body = [
+              marker,
+              `## PR 本文チェック ${status}`,
+              '',
+              fence,
+              result,
+              fence,
+              '',
+              `_\`scripts/check.py\` による自動チェック。${PASS_SCORE} 点以上で pass。点数は目安で、構成の良し悪しは測れません。_`,
+            ].join('\n');
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            // コメント数が 30 を超える PR でも既存の sticky コメントを見つけられるよう全ページ走査する。
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner, repo, issue_number, per_page: 100,
+            });
+            const existing = comments.find((c) => c.body && c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            }
