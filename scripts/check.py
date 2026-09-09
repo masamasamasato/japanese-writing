@@ -61,16 +61,26 @@ AI_PATTERNS = {
 # 曖昧語（重なると確信がなく見える）
 HEDGES = ["ざっくり", "だいたい", "≒", "イメージです", "イメージとしては", "的な感じ", "かなと思", "かもしれません"]
 
-KEIGO_END = re.compile(r"(です|ます|でした|ました|ません|でしょう|ましょう)[。！？!?]?$")
-JOTAI_END = re.compile(r"(だ|である|だった|であった|ではない|でない|ない|る|た|う|く|い)[。！？!?]?$")
+# 終助詞（か・ね・よ）と句読点は文体判定に影響させない
+KEIGO_END = re.compile(r"(です|ます|でした|ました|ません|でしょう|ましょう|ください)(か|ね|よ)?[。！？!?]?$")
+JOTAI_END = re.compile(r"(だ|である|だった|であった|ではない|でない|ない|る|た|う|く|い)(か|ね|よ)?[。！？!?]?$")
 
 
 def split_sentences(text):
     """行番号つきで文を切り出す。コードブロック・表・見出し・URL は除外する。"""
     sentences = []
     in_code = False
+    in_frontmatter = False
     for lineno, line in enumerate(text.splitlines(), 1):
         stripped = line.strip()
+        # 先頭の YAML frontmatter（--- で囲まれた部分）は本文ではないので飛ばす
+        if lineno == 1 and stripped == "---":
+            in_frontmatter = True
+            continue
+        if in_frontmatter:
+            if stripped == "---":
+                in_frontmatter = False
+            continue
         if stripped.startswith("```"):
             in_code = not in_code
             continue
@@ -79,9 +89,11 @@ def split_sentences(text):
         if stripped.startswith(("#", "|", "---")):
             continue
         body = re.sub(r"^([-*+]|\d+\.)\s+", "", stripped)
+        # 箇条書き判定は URL・インラインコードを除去する前に行う。
+        # 除去後に比べると、コードや URL を含む普通の文まで箇条書き扱いになる
+        is_bullet = body != stripped
         body = re.sub(r"https?://\S+", "", body)
         body = re.sub(r"`[^`]*`", "", body)
-        is_bullet = body != stripped
         # 「」内の句点では文を切らない
         body = re.sub(r"「[^」]*」", lambda m: m.group(0).replace("。", "\u0000"), body)
         for s in re.split(r"(?<=[。！？!?])", body):
