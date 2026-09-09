@@ -32,14 +32,23 @@ jobs:
             exit 0
           fi
           echo "empty=false" >> "$GITHUB_OUTPUT"
+          out="$(python3 scripts/check.py pr-body.md)"
           {
             echo 'result<<EOF_CHECK_RESULT'
-            python3 scripts/check.py pr-body.md
+            echo "$out"
             echo 'EOF_CHECK_RESULT'
           } >> "$GITHUB_OUTPUT"
+          {
+            echo '## PR 本文チェック'
+            echo '```'
+            echo "$out"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
+      # fork からの PR は GITHUB_TOKEN が read-only でコメントできないため、
+      # コメント投稿は同一リポジトリの PR に限る。結果はジョブサマリーで見られる。
       - name: Upsert PR comment
-        if: steps.check.outputs.empty == 'false'
+        if: steps.check.outputs.empty == 'false' && github.event.pull_request.head.repo.fork == false
         uses: actions/github-script@v7
         env:
           RESULT: ${{ steps.check.outputs.result }}
