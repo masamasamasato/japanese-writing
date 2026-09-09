@@ -42,10 +42,11 @@ jobs:
           else
             out="$(printf 'check.py の実行に失敗しました (exit %s):\n%s' "$rc" "$raw")"
           fi
+          delimiter="EOF_CHECK_RESULT_$(python3 -c 'import uuid; print(uuid.uuid4().hex)')"
           {
-            echo 'result<<EOF_CHECK_RESULT'
+            echo "result<<$delimiter"
             echo "$out"
-            echo 'EOF_CHECK_RESULT'
+            echo "$delimiter"
           } >> "$GITHUB_OUTPUT"
           {
             echo '## PR 本文チェック'
