@@ -47,6 +47,22 @@ cat text.md | python3 scripts/check.py
 | `pr-docs-check` | PR で変更した Markdown | PR を開いた / コミットを追加した |
 | `test-check` | `scripts/check.py` の回帰テスト | すべての PR / main への push |
 
+## スキルの効果を測る
+
+`evals/evals.json` には、3つの試験文と18項目の採点条件が入っています。試験文は Slack 連絡文の添削、用語解説の「なぜわかりづらい」、CI 失敗説明の点数評価の3種類。`evals/run_models.py` は、この試験文をスキルあり・なしの両方で `claude -p` に流し、回答と費用を保存するスクリプトです。
+
+```bash
+python3 evals/run_models.py --out /tmp/jw-evals claude-sonnet-5 claude-haiku-4-5-20251001
+```
+
+採点は、保存された回答を採点条件と一緒に Claude に読ませて行います。2026年9月の測定結果は次のとおりです。
+
+| モデル | スキルなし | スキルあり |
+|---|---|---|
+| Fable 5.1 | 6 / 18 | 17 / 18 |
+| Sonnet 5 | 7 / 18 | 16 / 18 |
+| Haiku 4.5 | 9 / 18 | 16 / 18 |
+
 ## インストール
 
 このスキルは [Agent Skills](https://agentskills.io) の形式（`SKILL.md` + `references/` + `scripts/`）なので、Claude Code と Cursor の両方でそのまま使えます。リポジトリを一度 clone し、各ツールが読むディレクトリからシンボリックリンクを張ります。
