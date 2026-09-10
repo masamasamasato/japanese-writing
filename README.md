@@ -20,8 +20,9 @@
 
 | ファイル | 役割 |
 |---|---|
-| `SKILL.md` | スキル本体。書くときの原則と、頼まれたときの応え方 |
-| `references/principles.md` | 文章の原則（構成・段落・一文・冗長表現の一覧） |
+| `SKILL.md` | スキル本体。毎回読む原則と、頼まれたときの応え方。詳細は下の references に委ねる |
+| `references/principles.md` | 文章の原則（構成・目次と太字・原因の書き方・一文・具体例・冗長表現の一覧） |
+| `references/diagnosis.md` | 「わかりづらい」と言われたときに根本原因を一つ探す手順と、疑う順番 |
 | `references/rubric.md` | 構成・具体性・自然さの採点表 |
 | `references/document-types.md` | 文書の種類ごとの構成とよくある失敗 |
 | `scripts/check.py` | 一文の長さ、冗長表現、曖昧語、文体の混在などを機械的に測る |
