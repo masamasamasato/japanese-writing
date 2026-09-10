@@ -13,6 +13,7 @@ description: 読みやすく簡潔で自然な日本語の文章を書く・直�
 |---|---|
 | `references/principles.md` | 本文を書く・直すとき。構成、一文、冗長表現、表記、翻訳調・AI調の一覧 |
 | `references/document-types.md` | 文書の種類がわかったとき。種類ごとの構成とよくある失敗 |
+| `references/diagrams.md` | 設計書・仕様書・技術記事に図を入れるとき。図・表・文の使い分けと Mermaid の型 |
 | `references/diagnosis.md` | 「わかりづらい」と言われ、根本原因を探すとき |
 | `references/rubric.md` | 「評価して」「点数をつけて」と頼まれたとき。採点表と出力形式 |
 
