@@ -26,7 +26,7 @@
 | `references/rubric.md` | 構成・具体性・自然さの採点表 |
 | `references/document-types.md` | 文書の種類ごとの構成とよくある失敗 |
 | `references/diagrams.md` | 図・表・文の使い分けと、Mermaid で図を書くときの型 |
-| `scripts/check.py` | 一文の長さ、冗長表現、曖昧語、文体の混在などを機械的に測る |
+| `scripts/check.py` | 一文の長さ、読点や漢字の連続、冗長表現、曖昧語と推測表現、文体の混在、表記などを機械的に測る |
 
 ## check.py の使い方
 

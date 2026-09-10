@@ -111,6 +111,32 @@ expect("曖昧" in kinds(issues), "「適宜」を曖昧語として検出でき
 issues, _, _ = check("ご確認のほどよろしくお願いいたします。\n")
 expect("冗長" in kinds(issues), "「のほどよろしく」を検出できていない")
 
+# 読点が4つ以上の文、「が、」の重複、漢字の連続を拾う
+issues, _, _ = check("委員会では、新方針が、提示され、時期尚早との意見が、多かった。\n")
+expect("読点" in kinds(issues), "読点4つ以上を検出できていない")
+issues, _, _ = check("新方針が提示されたが、反対が多かったが、そのまま決定した。\n")
+expect("接続" in kinds(issues), "「が、」の重複を検出できていない")
+issues, _, _ = check("配信対象抽出完了日時を更新する。\n")
+expect("漢字" in kinds(issues), "漢字7字以上の連続を検出できていない")
+issues, _, _ = check("文化審議会が答申した。\n")
+expect("漢字" not in kinds(issues), "漢字5字の連続が誤検出されている")
+
+# 推測表現と二重否定を拾う
+issues, _, _ = check("おそらく設定の問題のようです。\n")
+expect(kinds(issues).count("曖昧") >= 1, "推測表現を検出できていない")
+issues, _, _ = check("動かないことはない。\n")
+expect("冗長" in kinds(issues), "二重否定「ないことはない」を検出できていない")
+
+# 漢字をひらく表記とら抜き言葉を拾い、誤検出しない
+issues, _, _ = check("設定を変更出来ます。\n")
+expect("表記" in kinds(issues), "「出来ます」を検出できていない")
+issues, _, _ = check("仕様を変更に合わせて一致させます。出来事を記録します。\n")
+expect("表記" not in kinds(issues), "「変更に」「一致」「出来事」が誤検出されている")
+issues, _, _ = check("画面を見れます。\n")
+expect("ら抜き" in kinds(issues), "ら抜き「見れます」を検出できていない")
+issues, _, _ = check("画面を見れば分かります。\n")
+expect("ら抜き" not in kinds(issues), "仮定形「見れば」が誤検出されている")
+
 if FAILURES:
     print(f"FAIL {len(FAILURES)} 件:")
     for f in FAILURES:
