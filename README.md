@@ -48,8 +48,26 @@ cat text.md | python3 scripts/check.py
 
 ## インストール
 
-このリポジトリを `~/.claude/skills/` 以下に置くと、Claude Code がスキルとして認識します。
+このスキルは [Agent Skills](https://agentskills.io) の形式（`SKILL.md` + `references/` + `scripts/`）なので、Claude Code と Cursor の両方でそのまま使えます。リポジトリを一度 clone し、各ツールが読むディレクトリからシンボリックリンクを張ります。
 
 ```bash
-git clone git@github.com:masamasamasato/japanese-writing.git ~/.claude/skills/japanese-writing
+git clone git@github.com:masamasamasato/japanese-writing.git ~/japanese-writing
 ```
+
+### Claude Code
+
+```bash
+mkdir -p ~/.claude/skills && ln -sfn ~/japanese-writing ~/.claude/skills/japanese-writing
+```
+
+### Cursor
+
+Cursor は `~/.cursor/skills/` と `~/.agents/skills/` に加え、互換のため `~/.claude/skills/` も読みます。Claude Code の設定だけでも動きますが、明示するなら次を実行します。
+
+```bash
+mkdir -p ~/.cursor/skills && ln -sfn ~/japanese-writing ~/.cursor/skills/japanese-writing
+```
+
+プロジェクト単位で使うなら、リポジトリ内の `.cursor/skills/japanese-writing/` に置いても認識されます。
+
+どちらのツールでも、更新は `~/japanese-writing` で `git pull` するだけです。
