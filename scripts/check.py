@@ -39,6 +39,10 @@ REDUNDANT = {
     "まず最初に": "まず",
     "各々それぞれ": "それぞれ",
     "ないわけではない": "（肯定形にする）",
+    "ないことはない": "（肯定形にする）",
+    "なくはない": "（肯定形にする）",
+    "なくもない": "（肯定形にする）",
+    "ないとは限らない": "（肯定形にする）",
     "ではないかと思": "だと思う / だ",
     "いかがでしたでしょうか": "（削除）",
     "参考になれば幸い": "（削除）",
@@ -60,8 +64,33 @@ AI_PATTERNS = {
     r"私たち": "不要な人称代名詞",
 }
 
-# 曖昧語（重なると確信がなく見える）
-HEDGES = ["ざっくり", "だいたい", "≒", "イメージです", "イメージとしては", "的な感じ", "かなと思", "かもしれません", "適宜", "必要に応じて"]
+# 曖昧語・推測表現（重なると確信がなく見える。断定できないときは「かもしれません」を一度だけ）
+HEDGES = [
+    "ざっくり", "だいたい", "≒", "イメージです", "イメージとしては", "的な感じ", "かなと思", "かもしれません",
+    "適宜", "必要に応じて",
+    "おそらく", "ようです", "ではないでしょうか", "可能性があ", "おそれがあ", "と思います",
+]
+
+# 漢字をひらく語（補助的な用法はひらがなにする）。前後の文脈で誤検出しやすい語は正規表現で絞る
+HIRAKU = [
+    (r"出来(る|ま|な|た|て|れ)", "出来る → できる"),
+    (r"頂(く|き|け|い)", "頂く → いただく"),
+    (r"(?<![一合])致し", "致します → いたします"),
+    (r"(?<![変])更に", "更に → さらに"),
+    (r"但し", "但し → ただし"),
+    (r"(?<![行人作無有])為(に|の|、)", "為 → ため"),
+    (r"迄", "迄 → まで"),
+    (r"或いは", "或いは → あるいは"),
+    (r"且つ", "且つ → かつ"),
+    (r"予め", "予め → あらかじめ"),
+    (r"殆ど", "殆ど → ほとんど"),
+    (r"沢山", "沢山 → たくさん"),
+    (r"是非", "是非 → ぜひ"),
+    (r"尚、", "尚、 → なお、"),
+]
+
+# ら抜き言葉（「見れば」のような仮定形は除く）
+RANUKI = re.compile(r"(見|来|食べ|出|寝|着|起き|決め|変え|考え|覚え|始め|受け)れ(る|ます|ない|た|て)")
 
 # 終助詞（か・ね・よ）と句読点は文体判定に影響させない
 KEIGO_END = re.compile(r"(です|ます|でした|ました|ません|でしょう|ましょう|ください)(か|ね|よ)?[。！？!?]?$")
@@ -194,6 +223,47 @@ def check(text):
             particle_count += 1
             issues.append((lineno, "助詞", "「の」が4連続。語順を変える"))
 
+    # 読点が多い文（4つ以上）。重文・複文の兆候なので分割を促す
+    ten_count = 0
+    for lineno, s, _ in sents:
+        # 括弧や「」の中の読点は列挙の区切りなので数えない
+        outside = re.sub(r"（[^）]*）|\([^)]*\)|「[^」]*」", "", s)
+        n_ten = outside.count("、") + outside.count("，")
+        if n_ten >= 4:
+            ten_count += 1
+            issues.append((lineno, "読点", f"読点が{n_ten}つ。文を分ける: 「{s[:30]}…」"))
+
+    # 接続助詞「が、」の重複。「〜が、〜が、」は文が切れていない
+    ga_count = 0
+    for lineno, s, _ in sents:
+        if len(re.findall(r"が、", s)) >= 2:
+            ga_count += 1
+            issues.append((lineno, "接続", f"「が、」が2回以上。2文にする: 「{s[:30]}…」"))
+
+    # 漢字の連続（7文字以上）。複合語は区切るか、ひらがなを挟む
+    kanji_count = 0
+    for lineno, s, _ in sents:
+        m = re.search(r"[一-鿿々]{7,}", body_of(s))
+        if m:
+            kanji_count += 1
+            issues.append((lineno, "漢字", f"漢字が{len(m.group(0))}字連続「{m.group(0)}」。区切るかひらく"))
+
+    # 漢字をひらく表記
+    hiraku_count = 0
+    for lineno, s, _ in sents:
+        for pat, msg in HIRAKU:
+            if re.search(pat, body_of(s)):
+                hiraku_count += 1
+                issues.append((lineno, "表記", msg))
+
+    # ら抜き言葉
+    ranuki_count = 0
+    for lineno, s, _ in sents:
+        m = RANUKI.search(body_of(s))
+        if m:
+            ranuki_count += 1
+            issues.append((lineno, "ら抜き", f"「{m.group(0)}」→ 「{m.group(1)}られ{m.group(2)}」"))
+
     # 点数（100点満点、下限0）
     # 指摘が一つでもあれば 100 点にはならないようにする。100 点は「指摘なし」の意味に限る。
     # 長文は文の割合ではなく 1 文ごとに減点する。割合だと短い回答が過度に不利になる。
@@ -207,6 +277,11 @@ def check(text):
     score -= 15 if mixed else 0                                    # 文体混在
     score -= min(10, tail_repeat * 3)                              # 単調
     score -= min(6, particle_count * 2)                            # 助詞の連続
+    score -= min(5, ten_count * 1)                                 # 読点4つ以上
+    score -= min(6, ga_count * 2)                                  # 「が、」の重複
+    score -= min(5, kanji_count * 1)                               # 漢字の連続
+    score -= min(5, hiraku_count * 1)                              # 漢字をひらく
+    score -= min(3, ranuki_count * 1)                              # ら抜き
     score = max(0, score)
 
     stats = {
@@ -216,6 +291,9 @@ def check(text):
         "冗長表現": redundant_count,
         "AI調の兆候": ai_count,
         "曖昧語": hedge_count,
+        "読点4つ以上の文": ten_count,
+        "漢字7字以上の連続": kanji_count,
+        "表記": hiraku_count + ranuki_count,
         "文体": "混在" if mixed else ("敬体" if keigo else "常体"),
     }
     return issues, score, stats
