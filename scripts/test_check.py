@@ -81,6 +81,36 @@ expect(score == 100, f"問題のない文章が {score} 点になっている")
 issues, score, stats = check("")
 expect(issues == [] and score == 0, "空入力の扱いが変わっている")
 
+# ~~~ で囲んだコードブロック（Mermaid 図など）は本文として数えない
+_, _, stats = check("本文です。\n\n~~~mermaid\nflowchart TD\n    A[" + "あ" * 90 + "] --> B\n~~~\n")
+expect(stats["文の数"] == 1, "~~~ のコードブロックが本文として数えられている")
+# ``` の中の ~~~ は閉じ記号にしない
+_, _, stats = check("本文です。\n\n```\n~~~\n" + "あ" * 90 + "。\n```\n")
+expect(stats["文の数"] == 1, "``` の中の ~~~ で囲みが閉じている")
+
+# 引用行は本文として数えるが、> は文字数に入れない
+sents = split_sentences("> 引用です。\n")
+expect(sents and sents[0][1] == "引用です。", "引用行の > が文に残っている")
+
+# 指摘があれば 100 点にはならない
+_, score, _ = check("あ" * 70 + "。\n")
+expect(score < 100, "やや長い文があるのに 100 点になっている")
+_, score, _ = check("彼の兄の友人の車の色は赤だ。\n")
+expect(score < 100, "「の」の4連続があるのに 100 点になっている")
+_, score, _ = check("ざっくり合っています。\n")
+expect(score < 100, "曖昧語が 1 つあるのに 100 点になっている")
+
+# 長文の減点は文の数に左右されない（短い回答が過度に不利にならない）
+_, short_score, _ = check(("あ" * 90 + "。\n") * 3 + "短い文です。\n" * 4)
+_, long_score, _ = check(("あ" * 90 + "。\n") * 3 + "短い文です。\n" * 97)
+expect(short_score == long_score, f"長文 3 つの減点が文の数で変わっている ({short_score} vs {long_score})")
+
+# 仕様書の曖昧語と敬語の重ねを拾う
+issues, _, _ = check("エラー時は適宜リトライする。\n")
+expect("曖昧" in kinds(issues), "「適宜」を曖昧語として検出できていない")
+issues, _, _ = check("ご確認のほどよろしくお願いいたします。\n")
+expect("冗長" in kinds(issues), "「のほどよろしく」を検出できていない")
+
 if FAILURES:
     print(f"FAIL {len(FAILURES)} 件:")
     for f in FAILURES:

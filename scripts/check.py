@@ -44,6 +44,8 @@ REDUNDANT = {
     "参考になれば幸い": "（削除）",
     "以下に説明します": "（削除）",
     "ご存知の通り": "（削除）",
+    "のほどよろしく": "ください / お願いします",
+    "いただけますと幸い": "ください / お願いします",
 }
 
 # AI調・翻訳調の兆候
@@ -59,7 +61,7 @@ AI_PATTERNS = {
 }
 
 # 曖昧語（重なると確信がなく見える）
-HEDGES = ["ざっくり", "だいたい", "≒", "イメージです", "イメージとしては", "的な感じ", "かなと思", "かもしれません"]
+HEDGES = ["ざっくり", "だいたい", "≒", "イメージです", "イメージとしては", "的な感じ", "かなと思", "かもしれません", "適宜", "必要に応じて"]
 
 # 終助詞（か・ね・よ）と句読点は文体判定に影響させない
 KEIGO_END = re.compile(r"(です|ます|でした|ました|ません|でしょう|ましょう|ください)(か|ね|よ)?[。！？!?]?$")
@@ -69,7 +71,7 @@ JOTAI_END = re.compile(r"(だ|である|だった|であった|ではない|で�
 def split_sentences(text):
     """行番号つきで文を切り出す。コードブロック・表・見出し・URL は除外する。"""
     sentences = []
-    in_code = False
+    fence = None  # 開いているコードブロックの囲み記号（``` または ~~~）
     in_frontmatter = False
     for lineno, line in enumerate(text.splitlines(), 1):
         stripped = line.strip()
@@ -81,12 +83,19 @@ def split_sentences(text):
             if stripped == "---":
                 in_frontmatter = False
             continue
-        if stripped.startswith("```"):
-            in_code = not in_code
+        # コードブロックは ``` と ~~~ の両方を認識する。Mermaid 図は ~~~ で囲むことが多い
+        if fence is None and stripped.startswith(("```", "~~~")):
+            fence = stripped[:3]
             continue
-        if in_code or not stripped:
+        if fence is not None:
+            if stripped.startswith(fence):
+                fence = None
             continue
-        if stripped.startswith(("#", "|", "---")):
+        if not stripped:
+            continue
+        # 引用行（> ...）は本文として数えるが、記号は文字数に入れない
+        stripped = re.sub(r"^(>\s*)+", "", stripped)
+        if not stripped or stripped.startswith(("#", "|", "---")):
             continue
         body = re.sub(r"^([-*+]|\d+\.)\s+", "", stripped)
         # 箇条書き判定は URL・インラインコードを除去する前に行う。
@@ -113,12 +122,14 @@ def check(text):
     # 一文の長さ
     lengths = [len(s) for _, s, _ in sents]
     long_count = 0
+    warn_count = 0
     for lineno, s, _ in sents:
         n = len(s)
         if n > LONG_SENTENCE:
             long_count += 1
             issues.append((lineno, "長さ", f"{n}字。分割を検討: 「{s[:30]}…」"))
         elif n > WARN_SENTENCE:
+            warn_count += 1
             issues.append((lineno, "長さ", f"{n}字（やや長い）: 「{s[:30]}…」"))
 
     def body_of(s):
@@ -177,19 +188,25 @@ def check(text):
         prev_tail = tail
 
     # 助詞の連続
+    particle_count = 0
     for lineno, s, _ in sents:
         if re.search(r"の[^の。、]{1,8}の[^の。、]{1,8}の[^の。、]{1,8}の", s):
+            particle_count += 1
             issues.append((lineno, "助詞", "「の」が4連続。語順を変える"))
 
     # 点数（100点満点、下限0）
+    # 指摘が一つでもあれば 100 点にはならないようにする。100 点は「指摘なし」の意味に限る。
+    # 長文は文の割合ではなく 1 文ごとに減点する。割合だと短い回答が過度に不利になる。
     n = len(sents)
     score = 100
-    score -= min(30, int(30 * long_count / max(n, 1) * 3))       # 長文の割合
+    score -= min(30, long_count * 5)                               # 80字超（1文 5点）
+    score -= min(10, warn_count * 1)                               # やや長い（1文 1点）
     score -= min(25, redundant_count * 3)                          # 冗長表現
     score -= min(15, ai_count * 3)                                 # AI調
-    score -= min(10, max(0, hedge_count - 1) * 3)                  # 曖昧語（2個目から減点）
+    score -= min(10, 1 + (hedge_count - 1) * 3) if hedge_count else 0  # 曖昧語（1個目 1点、以降 3点）
     score -= 15 if mixed else 0                                    # 文体混在
     score -= min(10, tail_repeat * 3)                              # 単調
+    score -= min(6, particle_count * 2)                            # 助詞の連続
     score = max(0, score)
 
     stats = {

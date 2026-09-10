@@ -34,7 +34,7 @@ python3 scripts/check.py path/to/text.md
 cat text.md | python3 scripts/check.py
 ```
 
-行番号つきの指摘と、100点満点の点数が出ます。回帰テストは `python3 scripts/test_check.py` で実行できます。点数は目安です。スクリプトは文の形しか見ておらず、読みにくさの原因はたいてい構成にあります。`references/rubric.md` の採点表と併用し、食い違ったら採点表を信じてください。
+行番号つきの指摘と、100点満点の点数が出ます。100点は「指摘なし」の意味で、指摘が一つでもあれば100点にはなりません。回帰テストは `python3 scripts/test_check.py` で実行できます。点数は目安です。スクリプトは文の形しか見ておらず、読みにくさの原因はたいてい構成にあります。`references/rubric.md` の採点表と併用し、食い違ったら採点表を信じてください。
 
 ## 自動チェック（GitHub Actions）
 
