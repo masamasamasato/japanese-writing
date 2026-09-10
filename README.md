@@ -25,6 +25,7 @@
 | `references/diagnosis.md` | 「わかりづらい」と言われたときに根本原因を一つ探す手順と、疑う順番 |
 | `references/rubric.md` | 構成・具体性・自然さの採点表 |
 | `references/document-types.md` | 文書の種類ごとの構成とよくある失敗 |
+| `references/diagrams.md` | 図・表・文の使い分けと、Mermaid で図を書くときの型 |
 | `scripts/check.py` | 一文の長さ、冗長表現、曖昧語、文体の混在などを機械的に測る |
 
 ## check.py の使い方
