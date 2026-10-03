@@ -168,6 +168,16 @@ issues, _, _ = check("KR が KPI と同義であるとは限らない。\n")
 expect("区別" not in kinds(issues), "「と同義であるとは限らない」が誤検出されている")
 issues, score, _ = check("KR は KPI と同義です。\n")
 expect(score < 100, "用語の同一視があるのに 100 点になっている")
+# 敬体の否定と、「だとは限らない」は同一視ではない
+for sent in (
+    "KRはKPIと同義ではありません。",
+    "KRはKPIと同じ意味ではありません。",
+    "KRはKPIとほぼ同義ではありません。",
+    "KRはKPIと同じ意味だとは限らない。",
+):
+    issues, score, _ = check(sent + "\n")
+    expect("区別" not in kinds(issues), f"「{sent}」が区別として誤検出されている")
+    expect(score == 100, f"「{sent}」が {score} 点になっている")
 
 # 前者・後者・当該。引用の中は対象外
 issues, score, _ = check("選択肢は二つある。前者は条件ではない。\n")
