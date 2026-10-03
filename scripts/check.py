@@ -6,8 +6,9 @@
     cat text.md | python check.py
 
 出力: 指摘一覧（行番号つき）と、100点満点の点数。
-点数は目安であり、構成や具体性は測れない。文が整っていても構成が悪い文章は
-高得点になる。必ず references/rubric.md の採点表と併用し、食い違ったら採点表を信じる。
+点数は目安であり、構成や具体性や主張の向きは測れない。文が整っていても
+構成が悪い文章や、主張が逆転した直しは高得点になる。必ず references/rubric.md
+の採点表と併用し、精密な文章は references/dense-text.md も見る。食い違ったら採点表を信じる。
 """
 import re
 import sys
@@ -54,9 +55,9 @@ REDUNDANT = {
 
 # AI調・翻訳調の兆候
 AI_PATTERNS = {
-    r"^(まず|次に|最後に|また|さらに)[、,]": "段落頭の接続詞が機械的",
+    r"^(まず|次に|最後に|また|さらに)[、,]": "文頭の接続詞。飾りなら削り、追加の条件なら中身は残す",
     r"^(重要なのは|注目すべきは|ポイントは)": "「重要なのは」で始めない",
-    r"することが重要です[。]?$": "「〜が重要です」で締めない",
+    r"ことが重要(?:です|である)[。]?$": "「〜が重要です」で締めない",
     r"を心がけましょう[。]?$": "「〜しましょう」で締めない",
     r"することを確実に": "翻訳調（必ず〜する）",
     r"のうちの一つ": "翻訳調（〜の一つ）",
@@ -64,7 +65,19 @@ AI_PATTERNS = {
     r"私たち": "不要な人称代名詞",
 }
 
+# 違う概念を同義にまとめた印。否定（「と同義ではない」）は対象外。
+FALSE_SYNONYM = re.compile(
+    r"ほぼ同義(?!ではな)"
+    r"|と同じ意味(?!ではな)"
+    r"|同義と考え"
+    r"|と同義(?:です|である|だ|で(?!あ))(?!はない|とは限ら|わけではな)"
+)
+
+# 文を分けたあとに残りやすい指示。指す名詞を書かせる。
+DANGLING = re.compile(r"前者|後者|当該")
+
 # 曖昧語・推測表現（重なると確信がなく見える。断定できないときは「かもしれません」を一度だけ）
+# 「とは限らない」は全称の否定であり、推測の留保ではないので入れない。
 HEDGES = [
     "ざっくり", "だいたい", "≒", "イメージです", "イメージとしては", "的な感じ", "かなと思", "かもしれません",
     "適宜", "必要に応じて",
@@ -240,13 +253,33 @@ def check(text):
             ga_count += 1
             issues.append((lineno, "接続", f"「が、」が2回以上。2文にする: 「{s[:30]}…」"))
 
-    # 漢字の連続（7文字以上）。複合語は区切るか、ひらがなを挟む
+    # 漢字の連続（7文字以上）。確立した専門語は分割せず、直後に言い換える。
+    # 「用語（言い換え）」と「用語とは、言い換え」は指摘しない。
     kanji_count = 0
     for lineno, s, _ in sents:
-        m = re.search(r"[一-鿿々]{7,}", body_of(s))
-        if m:
+        body = body_of(s)
+        for m in re.finditer(r"[一-鿿々]{7,}", body):
+            rest = body[m.end():]
+            if rest.startswith(("（", "(", "とは、")):
+                continue
             kanji_count += 1
-            issues.append((lineno, "漢字", f"漢字が{len(m.group(0))}字連続「{m.group(0)}」。区切るかひらく"))
+            term = m.group(0)
+            issues.append((lineno, "漢字", f"漢字が{len(term)}字連続「{term}」。専門語なら直後に（）か「とは、」で言い換える"))
+
+    # 用語の同一視
+    synonym_count = 0
+    for lineno, s, _ in sents:
+        if FALSE_SYNONYM.search(body_of(s)):
+            synonym_count += 1
+            issues.append((lineno, "区別", "違う概念を同義にしていないか確認する"))
+
+    # 前者・後者・当該
+    anaphora_count = 0
+    for lineno, s, _ in sents:
+        m = DANGLING.search(body_of(s))
+        if m:
+            anaphora_count += 1
+            issues.append((lineno, "指示", f"「{m.group(0)}」は指す名詞を書く"))
 
     # 漢字をひらく表記
     hiraku_count = 0
@@ -280,6 +313,8 @@ def check(text):
     score -= min(5, ten_count * 1)                                 # 読点4つ以上
     score -= min(6, ga_count * 2)                                  # 「が、」の重複
     score -= min(5, kanji_count * 1)                               # 漢字の連続
+    score -= min(6, synonym_count * 3)                             # 用語の同一視（1文 3点）
+    score -= min(6, anaphora_count * 2)                            # 前者・後者・当該（1文 2点）
     score -= min(5, hiraku_count * 1)                              # 漢字をひらく
     score -= min(3, ranuki_count * 1)                              # ら抜き
     score = max(0, score)
@@ -293,6 +328,8 @@ def check(text):
         "曖昧語": hedge_count,
         "読点4つ以上の文": ten_count,
         "漢字7字以上の連続": kanji_count,
+        "用語の同一視": synonym_count,
+        "前者・後者": anaphora_count,
         "表記": hiraku_count + ranuki_count,
         "文体": "混在" if mixed else ("敬体" if keigo else "常体"),
     }
