@@ -137,6 +137,71 @@ expect("ら抜き" in kinds(issues), "ら抜き「見れます」を検出でき
 issues, _, _ = check("画面を見れば分かります。\n")
 expect("ら抜き" not in kinds(issues), "仮定形「見れば」が誤検出されている")
 
+# 専門語の漢字連続は、直後の言い換えがあれば指摘しない
+issues, _, _ = check("自己構成可能性を条件にする。\n")
+expect("漢字" in kinds(issues), "言い換えのない漢字7字連続を検出できていない")
+expect(any("言い換" in m for _, k, m in issues if k == "漢字"), "漢字連続の指摘が言い換えを案内していない")
+issues, score, _ = check("自己構成可能性（自分で理由を作れること）を条件にする。\n")
+expect("漢字" not in kinds(issues), "全角括弧の言い換えがある専門語が指摘されている")
+expect(score == 100, f"言い換えつきの専門語が {score} 点になっている")
+issues, _, _ = check("自己構成可能性(自分で理由を作れること)を条件にする。\n")
+expect("漢字" not in kinds(issues), "半角括弧の言い換えがある専門語が指摘されている")
+issues, _, _ = check("自己構成可能性とは、自分で理由を作れることである。\n")
+expect("漢字" not in kinds(issues), "「とは、」で言い換えた専門語が指摘されている")
+issues, _, _ = check("自己構成可能性とは無関係である。\n")
+expect("漢字" in kinds(issues), "「とは無関係」が言い換え扱いになっている")
+issues, _, _ = check("自己構成可能性（説明）と配信対象抽出完了日時を比べます。\n")
+expect("漢字" in kinds(issues), "言い換えのないほうの漢字連続が漏れている")
+
+# 違う概念の同一視。否定は指摘しない
+issues, _, _ = check("KR は KPI とほぼ同義と考えて差し支えありません。\n")
+expect(kinds(issues).count("区別") == 1, "「ほぼ同義と考え」を1文1件で検出できていない")
+issues, _, _ = check("KR は KPI と同じ意味です。\n")
+expect("区別" in kinds(issues), "「と同じ意味」を検出できていない")
+issues, _, _ = check("KR は KPI と同義で差し支えありません。\n")
+expect("区別" in kinds(issues), "「と同義で」を検出できていない")
+issues, _, _ = check("KR は KPI と同義ではない。\n")
+expect("区別" not in kinds(issues), "「と同義ではない」が誤検出されている")
+issues, _, _ = check("KR は KPI とほぼ同義ではない。\n")
+expect("区別" not in kinds(issues), "「ほぼ同義ではない」が誤検出されている")
+issues, _, _ = check("KR が KPI と同義であるとは限らない。\n")
+expect("区別" not in kinds(issues), "「と同義であるとは限らない」が誤検出されている")
+issues, score, _ = check("KR は KPI と同義です。\n")
+expect(score < 100, "用語の同一視があるのに 100 点になっている")
+# 敬体の否定と、「だとは限らない」は同一視ではない
+for sent in (
+    "KRはKPIと同義ではありません。",
+    "KRはKPIと同じ意味ではありません。",
+    "KRはKPIとほぼ同義ではありません。",
+    "KRはKPIと同じ意味だとは限らない。",
+):
+    issues, score, _ = check(sent + "\n")
+    expect("区別" not in kinds(issues), f"「{sent}」が区別として誤検出されている")
+    expect(score == 100, f"「{sent}」が {score} 点になっている")
+
+# 前者・後者・当該。引用の中は対象外
+issues, score, _ = check("選択肢は二つある。前者は条件ではない。\n")
+expect("指示" in kinds(issues), "「前者」を検出できていない")
+expect(score < 100, "「前者」があるのに 100 点になっている")
+issues, _, _ = check("「前者」は使わず、名詞を書く。\n")
+expect("指示" not in kinds(issues), "「」内の「前者」が指摘されている")
+issues, _, _ = check("悪い: 前者は自由ではない。\n")
+expect("指示" not in kinds(issues), "「悪い:」の例示行の「前者」が指摘されている")
+
+# 全称の否定と論理の接続は、曖昧語や AI 調にしない
+issues, score, _ = check("誤用だとは限りません。\n")
+expect("曖昧" not in kinds(issues) and score == 100, "「とは限らない」が曖昧語として減点されている")
+issues, score, _ = check("しかし、前提は残る。\nしたがって、個人化は残る。\n")
+expect("AI調" not in kinds(issues) and score == 100, "「しかし」「したがって」が AI 調として減点されている")
+
+# 「することが重要です」以外の文末も締まりとして拾う
+issues, _, _ = check("三つの施策を進めることが重要です。\n")
+expect("AI調" in kinds(issues), "「進めることが重要です」を検出できていない")
+issues, _, _ = check("三つの施策を進めることが重要である。\n")
+expect("AI調" in kinds(issues), "「進めることが重要である」を検出できていない")
+issues, _, _ = check("速度が重要なら先に測る。\n")
+expect("AI調" not in kinds(issues), "文末以外の「重要」が誤検出されている")
+
 if FAILURES:
     print(f"FAIL {len(FAILURES)} 件:")
     for f in FAILURES:
